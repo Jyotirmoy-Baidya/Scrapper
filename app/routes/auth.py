@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from pymongo.errors import DuplicateKeyError
 from ..schemas import RegisterIn, TokenOut, UserOut, GenerateSecretOut
 from ..database import db
 from ..auth import hash_password, verify_password, create_access_token
@@ -25,16 +26,19 @@ async def register(data: RegisterIn):
         "plan": 0,
         "secret_token": None
     }
-    res = await db.users.insert_one(user_doc)
-    # create usage doc
-    usage_doc = {
-        "user_id": res.inserted_id,
-        "calls_made_month": 0,
-        "calls_today": 0,
-        "last_reset": date.today().isoformat()
-    }
-    await db.usage.insert_one(usage_doc)
-    return {"msg": "user created"}
+    try:
+        res = await db.users.insert_one(user_doc)
+        # create usage doc
+        usage_doc = {
+            "user_id": res.inserted_id,
+            "calls_made_month": 0,
+            "calls_today": 0,
+            "last_reset": date.today().isoformat()
+        }
+        await db.usage.insert_one(usage_doc)
+        return {"msg": "user created"}
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="User with this username or email already exists.")
 
 @router.post("/login", response_model=TokenOut)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):

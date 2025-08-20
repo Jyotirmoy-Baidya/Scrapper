@@ -2,19 +2,14 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from ..database import db
 from datetime import date, datetime
 from bson import ObjectId
-from ..utils.scraper import scrape_multiple_pages, format_json_output, format_text_output,format_markdown_output
+from playwright.async_api import async_playwright
+from ..utils.scraper import format_json_output, format_text_output, format_markdown_output, scrape_multiple_pages
 
 router = APIRouter(prefix="/api", tags=["api"])
 
 PLANS = {0: 10, 1: 20, 2: 30}
 
 async def _reset_usage_if_needed(usage_doc):
-    """
-    usage_doc is from db. Should be a dict with keys:
-    - calls_made_month (int)
-    - calls_today (int)
-    - last_reset (ISO date string like '2025-08-19')
-    """
     today = date.today()
     last_reset_str = usage_doc.get("last_reset")
     try:
@@ -24,14 +19,12 @@ async def _reset_usage_if_needed(usage_doc):
 
     updated = False
 
-    # If month changed -> reset monthly counters
     if last_reset.month != today.month or last_reset.year != today.year:
         usage_doc["calls_made_month"] = 0
         usage_doc["calls_today"] = 0
         usage_doc["last_reset"] = today.isoformat()
         updated = True
     else:
-        # same month but check daily reset
         if last_reset != today:
             usage_doc["calls_today"] = 0
             usage_doc["last_reset"] = today.isoformat()
@@ -52,7 +45,6 @@ async def use_api(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-    # fetch usage doc
     usage = await db.usage.find_one({"user_id": user["_id"]})
     if not usage:
         usage = {
@@ -63,7 +55,6 @@ async def use_api(
         }
         await db.usage.insert_one(usage)
 
-    # reset checks
     usage, changed = await _reset_usage_if_needed(usage)
     if changed:
         if usage.get("_id"):
@@ -77,7 +68,6 @@ async def use_api(
     if usage["calls_made_month"] >= plan_limit:
         raise HTTPException(status_code=403, detail="Monthly API limit exceeded for your plan")
 
-    # increment counters
     new_calls_made = usage["calls_made_month"] + 1
     new_calls_today = usage["calls_today"] + 1
     await db.usage.update_one(
@@ -91,18 +81,21 @@ async def use_api(
         },
     )
 
-     # 🔥 Call the scraper here
-    results = scrape_multiple_pages(url, max_pages=3)
+    results = await scrape_multiple_pages(url, max_pages=1)
+
+    # Ensure results is not empty and contains the expected structure
+    # Safely check for 'url' key in the first result item
+    if not results or results[0].get('url') is None:
+        raise HTTPException(status_code=500, detail="Scraping failed to retrieve URL information or URL key is missing in the result.")
 
     return {
-        "message": "API call successful",
-        "url": url,
-        "type": type,
-        "calls_today": new_calls_today,
-        "calls_made_month": new_calls_made,
-        "plan_limit": plan_limit,
-        "result1": format_json_output(format_markdown_output(results)),
-        "result2": format_text_output(results),
-        "result3": format_markdown_output(results)
-        # "scraped_data": scraped_data,
-    }
+    "message": "API call successful",
+    "url": url,
+    "type": type,
+    "calls_today": new_calls_today,
+    "calls_made_month": new_calls_made,
+    "plan_limit": plan_limit,
+    "result1": format_json_output(format_markdown_output(results)),
+    "result2": format_text_output(results),
+    "result3": format_markdown_output(results)
+}

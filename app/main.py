@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, Depends, HTTPException
 from .database import db, create_indexes
 from .config import settings
@@ -9,10 +10,15 @@ from datetime import date
 import secrets
 from bson import ObjectId
 from datetime import datetime
+import sys
+import asyncio
 from fastapi import FastAPI, Request
 from datetime import datetime
 import time
 from .database import db
+
+if sys.platform == "win32" and sys.version_info >= (3, 8):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 app = FastAPI(title="FastAPI Mongo API - Usage limits")
 
@@ -37,12 +43,12 @@ async def log_api_usage(request: Request, call_next):
     api_key = request.headers.get("x-api-key")
     user_email = None
     if api_key:
-        user = await db["users"].find_one({"api_key": api_key})
+        user = await db.users.find_one({"api_key": api_key})
         if user:
             user_email = user["email"]
 
     if user_email:
-        await db["api_usage"].insert_one({
+        await db.api_usage.insert_one({
             "user_email": user_email,
             "endpoint": request.url.path,
             "method": request.method,
@@ -54,7 +60,7 @@ async def log_api_usage(request: Request, call_next):
     return response
 
 
-# Implement generate secret properly here so we can depend on get_current_user
+@app.get("/auth/me", response_model=UserOut)
 @app.post("/auth/generate-secret", response_model=GenerateSecretOut)
 async def generate_secret(current_user=Depends(get_current_user)):
     # current_user is a dict from deps.get_current_user
@@ -65,7 +71,7 @@ async def generate_secret(current_user=Depends(get_current_user)):
     return {"secret_token": token}
 
 @app.get("/auth/me", response_model=UserOut)
-async def me(current_user=Depends(get_current_user)):
+def me(current_user=Depends(get_current_user)):
     # convert _id to str
     return {
         "id": str(current_user["_id"]),

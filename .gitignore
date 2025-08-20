@@ -28,6 +28,7 @@ ENV/
 # OS files
 .DS_Store
 Thumbs.db
+python-3.11.8-amd64.exe
 
 # Python packages
 *.egg-info/
