@@ -33,7 +33,8 @@ async def register(data: RegisterIn):
             "user_id": res.inserted_id,
             "calls_made_month": 0,
             "calls_today": 0,
-            "last_reset": date.today().isoformat()
+            "last_day_reset": date.today().isoformat(),
+            "last_month_reset": date.today().isoformat(),
         }
         await db.usage.insert_one(usage_doc)
         return {"msg": "user created"}
