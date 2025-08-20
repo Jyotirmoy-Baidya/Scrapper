@@ -12,10 +12,12 @@ from bson import ObjectId
 from datetime import datetime
 import sys
 import asyncio
-from fastapi import FastAPI, Request
+from fastapi import Request
 from datetime import datetime
 import time
 from .database import db
+from fastapi.middleware.cors import CORSMiddleware
+
 
 if sys.platform == "win32" and sys.version_info >= (3, 8):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -26,6 +28,14 @@ app = FastAPI(title="FastAPI Mongo API - Usage limits")
 app.include_router(auth_router_module.router)
 app.include_router(api_router_module.router)
 app.include_router(usage.router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 async def startup_event():
