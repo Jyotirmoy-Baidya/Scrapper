@@ -4,6 +4,12 @@ from ..deps import get_current_user   # import the user dependency
 from datetime import date, timedelta, datetime
 from ..routes.api import _reset_usage_if_needed  # reuse same reset function
 
+from fastapi.responses import FileResponse
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
+from ..utils.dadscrapergapi import get_places_gApi
+from ..utils.datascraper import PlacesResponse, get_places, normalize_type
+
+
 router = APIRouter(prefix="/usage", tags=["usage"])
 
 PLANS = {0: 10, 1: 20, 2: 30}
@@ -105,3 +111,28 @@ async def get_dashboard(user=Depends(get_current_user)):
         "last_day_reset": usage["last_day_reset"],
         "last_month_reset": usage["last_month_reset"],
     }
+
+
+
+
+@router.get("/places", response_model=PlacesResponse)
+async def search_places(
+    location: str = Query(..., description="Any address, area, or ward (e.g., 'Ward 94 Kolkata', 'Ballygunge Kolkata')"),
+    type: str = Query(..., description="One or more types (comma-separated, e.g., 'restaurant,hotel,cafe')"),
+    radius: int = Query(5000, ge=1000, le=20000, description="Search radius in meters (default 5000=5km)"),
+    limit: int = Query(10, ge=1, le=50, description="Number of results (default 10, max 50)")
+):
+    user_types = [t.strip() for t in type.split(",") if t.strip()]
+    places = get_places(user_types, location, radius, limit)
+    return PlacesResponse(query=location, types=user_types, radius=radius, results=places)
+
+@router.get("/gplaces", response_model=PlacesResponse)
+async def search_gplaces(
+    location: str = Query(..., description="Any address, area, or ward (e.g., 'Ward 94 Kolkata', 'Ballygunge Kolkata')"),
+    type: str = Query(..., description="One or more types (comma-separated, e.g., 'restaurant,hotel,cafe')"),
+    radius: int = Query(5000, ge=1000, le=20000, description="Search radius in meters (default 5000=5km)"),
+    limit: int = Query(10, ge=1, le=50, description="Number of results (default 10, max 50)")
+):
+    user_types = [t.strip() for t in type.split(",") if t.strip()]
+    places = get_places_gApi(user_types, location, radius, limit)
+    return PlacesResponse(query=location, types=user_types, radius=radius, results=places)

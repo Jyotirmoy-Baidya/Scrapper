@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from .database import db, create_indexes
 from .config import settings
 from .auth import hash_password, create_access_token
@@ -17,6 +17,11 @@ from datetime import datetime
 import time
 from .database import db
 from fastapi.middleware.cors import CORSMiddleware
+
+from fastapi.responses import FileResponse
+import os
+import logging
+
 
 
 if sys.platform == "win32" and sys.version_info >= (3, 8):
@@ -97,3 +102,6 @@ async def upgrade_plan(plan_id: int, current_user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Invalid plan id")
     await db.users.update_one({"_id": current_user["_id"]}, {"$set": {"plan": plan_id}})
     return {"msg": "plan updated", "plan": plan_id}
+
+
+
