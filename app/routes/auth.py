@@ -14,32 +14,87 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # plan limits: plan_id -> monthly calls
 PLANS = {0: 10, 1: 20, 2: 30}
 
-@router.post("/register", status_code=201)
-async def register(data: RegisterIn):
-    existing = await db.users.find_one({"username": data.username})
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already exists")
+from fastapi import APIRouter, HTTPException, status
+from pymongo.errors import DuplicateKeyError, PyMongoError
+from datetime import date
+from bson import ObjectId
 
+router = APIRouter()
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(data: RegisterIn):
+    """
+    Registers a new user with username & password.
+    Creates an associated usage document for tracking API usage.
+    """
+
+    # Step 1: Check if user already exists
+    try:
+        existing_user = await db.users.find_one({"username": data.username})
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already exists"
+            )
+    except PyMongoError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error while checking existing user: {str(e)}"
+        )
+
+    # Step 2: Prepare user document
     user_doc = {
         "username": data.username,
         "password": hash_password(data.password),
         "plan": 0,
-        "secret_token": None
+        "secret_token": None,
+        "created_at": date.today().isoformat(),
+        "updated_at": date.today().isoformat(),
     }
+
     try:
-        res = await db.users.insert_one(user_doc)
-        # create usage doc
+        # Step 3: Insert user
+        result = await db.users.insert_one(user_doc)
+
+        if not result.inserted_id or not isinstance(result.inserted_id, ObjectId):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user record"
+            )
+
+        # Step 4: Create usage document
         usage_doc = {
-            "user_id": res.inserted_id,
+            "user_id": result.inserted_id,
             "calls_made_month": 0,
             "calls_today": 0,
             "last_day_reset": date.today().isoformat(),
             "last_month_reset": date.today().isoformat(),
         }
         await db.usage.insert_one(usage_doc)
-        return {"msg": "user created"}
+
+        return {
+            "msg": "User created successfully",
+            "user_id": str(result.inserted_id)
+        }
+
     except DuplicateKeyError:
-        raise HTTPException(status_code=400, detail="User with this username or email already exists.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User with this username already exists"
+        )
+
+    except PyMongoError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
 
 @router.post("/login", response_model=TokenOut)
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):

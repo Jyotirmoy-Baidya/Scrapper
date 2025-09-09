@@ -45,13 +45,13 @@ async def _reset_usage_if_needed(usage_doc):
 
 @router.get("/scrapper")
 async def use_api(
-    x_api_key: str = Header(None),
+    X_Api_Key: str = Header(None),
     url: str = Query(..., min_length=1, description="Target URL to scrape"),
 ):
-    if not x_api_key:
+    if not X_Api_Key:
         raise HTTPException(status_code=401, detail="x-api-key header required")
 
-    user = await db.users.find_one({"secret_token": x_api_key})
+    user = await db.users.find_one({"secret_token": X_Api_Key})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
